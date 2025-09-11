@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+langchain
+huggingface_hub
+langchain_community
+requests
+python-dotenv
+# transformers
+scipy
+edge-tts
+piper-tts
+sentence-splitter
