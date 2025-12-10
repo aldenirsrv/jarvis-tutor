@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request, HTTPException, Query
 from huggingface_hub.utils import HfHubHTTPError
 from pydantic import BaseModel
 from fastapi.responses import JSONResponse
-from app.model import HuggingFaceChat
+from app.model import HuggingFaceChat, OpenAIChat
 from app.text_to_speech import EdgeTTS
 from app.tts_piper import PiperTTS, PiperTTSStream
 from app.memory import SQLiteMemory
@@ -39,7 +39,13 @@ logger = logging.getLogger(__name__)
 
 memory = SQLiteMemory("conversations.db")
 hf_token = os.getenv('HUGGINGFACEHUB_API_TOKEN')
-chat = HuggingFaceChat(memory=memory, hf_token= hf_token)
+
+# Seleciona backend de chat via variável de ambiente
+chat_backend = os.getenv("CHAT_BACKEND", "huggingface").lower()
+if chat_backend == "openai":
+    chat = OpenAIChat(memory=memory)
+else:
+    chat = HuggingFaceChat(memory=memory, hf_token=hf_token)
 tts = EdgeTTS(voice="en-US-GuyNeural")
 tts_piper = PiperTTS(length_scale=1.25)
 tts_instance = PiperTTSStream()
@@ -48,7 +54,7 @@ tts_new = PiperStreamer(
     model_file="en_US-ryan-high.onnx",  # ajuste se necessário
     model_dir="voices",
     length_scale=1.1,                   # 1.0 = normal, >1 = mais lento
-    max_chunk_len=220,
+    max_chunk_len=80,                   # chunks menores => áudio começa mais rápido
     use_cuda=True,
 )
 
@@ -91,12 +97,31 @@ def wav_stream(text: str):
     para evitar múltiplos headers no mesmo arquivo.
     """
     first_chunk = True
-    for chunk in tts_stream.stream(text):          # cada chunk = WAV completo de 1 frase
+    for chunk in tts_new.stream_wav(text):          # cada chunk = WAV completo de 1 frase
         if first_chunk:
             yield chunk                            # mantém RIFF na primeira vez
             first_chunk = False
         else:
             yield chunk[44:]                       # remove cabeçalho nas demais
+
+
+@app.post("/chat-stream-text")
+async def chat_stream_text(user_input: UserInput):
+    """
+    Streaming de texto (OpenAI backend). Útil para reduzir latência de resposta.
+    """
+    if not isinstance(chat, OpenAIChat):
+        raise HTTPException(status_code=400, detail="Streaming de texto disponível apenas com CHAT_BACKEND=openai.")
+    try:
+        return StreamingResponse(
+            chat.stream(user_input.message),
+            media_type="text/plain",
+        )
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/chat")
 def chat_endpoint(user_input: UserInput):
     try:
@@ -107,16 +132,19 @@ def chat_endpoint(user_input: UserInput):
         audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
         # audio_bytes = base64.b64decode(audio_b64)
 
-              # 3. Salvando o áudio como um arquivo WAV localmente (opcional)
-        audio_file = "output_new.wav"
-        with open(audio_file, "wb") as f:
-            f.write(audio_bytes)  # Note que salvamos os BYTES aqui (não a string Base64)
+        #       # 3. Salvando o áudio como um arquivo WAV localmente (opcional)
+        # audio_file = "output_new.wav"
+        # with open(audio_file, "wb") as f:
+        #     f.write(audio_bytes)  # Note que salvamos os BYTES aqui (não a string Base64)
 
 
         return {
                     "response": response_processed,
                     "audio_base64": audio_b64
                 }
+    except HTTPException as e:
+        # Propaga HTTPException de forma transparente (ex: erros de token/modelo)
+        raise e
     except HfHubHTTPError as e:
         raise HTTPException(status_code=402, detail=str(e))
     except Exception as e:
@@ -166,13 +194,15 @@ async def chat_stream_endpoint(user_input: UserInput):
         response_text = chat.run(user_input.message)
         response_processed = add_natural_pauses(response_text)
 
-        # 2. Retorna fluxo de áudio
+        # 2. Gera áudio inteiro (para fechar a conexão) e envia em streaming simples
+        audio_bytes = tts_piper.run(response_processed)
         return StreamingResponse(
-            wav_stream(response_processed),
+            io.BytesIO(audio_bytes),
             media_type="audio/wav",
-            headers={"Transfer-Encoding": "chunked"}
         )
 
+    except HTTPException as e:
+        raise e
     except HfHubHTTPError as e:
         raise HTTPException(status_code=402, detail=str(e))
     except Exception as e:

@@ -31,7 +31,7 @@ class PiperStreamer:
 
     def __init__(
         self,
-        model_file: str = "en_US-ryan-high.onnx",
+        model_file: str = "en_US-ryan-medium.onnx",
         model_dir: str = "voices",
         *,
         length_scale: float = 1.2,
@@ -60,6 +60,8 @@ class PiperStreamer:
         self.voice: PiperVoice = PiperVoice.load(model_path, use_cuda=use_cuda)
         self.config = SynthesisConfig(length_scale=length_scale)
         self.max_chunk_len = max_chunk_len
+        # Tamanho de chunk menor => primeiro áudio sai mais rápido
+        self._wav_chunk_size = 4096
 
     # --------------------------------------------------------------------- #
     # API pública                                                            #
@@ -120,8 +122,7 @@ class PiperStreamer:
         write_wav(buf, sample_rate, pcm_array)
         buf.seek(0)
 
-        chunk_size = 32_768
-        while chunk := buf.read(chunk_size):
+        while chunk := buf.read(self._wav_chunk_size):
             yield chunk
 
 

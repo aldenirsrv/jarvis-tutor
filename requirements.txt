@@ -10,3 +10,4 @@ scipy
 edge-tts
 piper-tts
 sentence-splitter
+openai

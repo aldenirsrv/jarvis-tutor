@@ -9,7 +9,7 @@ from sentence_splitter import SentenceSplitter
 class PiperTTS:
     def __init__(self, length_scale):
         model_dir = "voices"
-        model_file = "en_US-ryan-medium.onnx"
+        model_file = "en_US-ryan-high.onnx"
         model_path = os.path.join(model_dir, model_file)
        
         if not os.path.isfile(model_path):
@@ -18,10 +18,11 @@ class PiperTTS:
         self.voice = PiperVoice.load(model_path, use_cuda=True)
 
         self.config = SynthesisConfig(
+            # Ajustes mais naturais: velocidade levemente abaixo e menos ruído
             length_scale=length_scale,  # controla velocidade
             volume=1.0,
-            noise_scale=0.667,
-            noise_w_scale=0.8,
+            noise_scale=0.5,
+            noise_w_scale=0.6,
             normalize_audio=True,
         )
 
@@ -45,7 +46,7 @@ class PiperTTS:
         return buf.getvalue()             
 
 class PiperTTSStream:
-    def __init__(self, length_scale=1.2, use_cuda=True):
+    def __init__(self, length_scale=0.9, use_cuda=True):
         model_dir = "voices"
         model_file = "en_US-ryan-high.onnx"
         model_path = os.path.join(model_dir, model_file)
