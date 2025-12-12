@@ -68,7 +68,7 @@ class PiperTTSStream:
 
     def synthesize_wav_bytes(self, text: str) -> bytes:
         """
-        Gera o áudio WAV completo do texto, com cabeçalho WAV correto.
+        Generate the full audio WAV of the text with correct WAV header.
         """
         chunks = list(self.voice.synthesize(text, self.config))
         if not chunks:
@@ -90,7 +90,7 @@ class PiperTTSStream:
 
     def stream_wav(self, text: str, chunk_size: int = 4096) -> Generator[bytes, None, None]:
         """
-        Gera o WAV completo em bytes e faz streaming em pedaços (chunks).
+        Generate the full WAV in bytes and make the straming in chuncks.
         """
         wav_bytes = self.synthesize_wav_bytes(text)
         buf = io.BytesIO(wav_bytes)
@@ -100,23 +100,3 @@ class PiperTTSStream:
             if not chunk:
                 break
             yield chunk
-    # def __init__(self):
-    #     model_dir = "voices"
-    #     model_file = "en_US-ryan-high.onnx"
-    #     model_path = os.path.join(model_dir, model_file)
-       
-    #     if not os.path.isfile(model_path):
-    #         raise FileNotFoundError(f"Modelo não encontrado: {model_path}")
-
-    #     # Carrega o modelo (piper busca automaticamente o .json ao lado do .onnx)
-    #     self.voice = PiperVoice.load(model_path)
-
-    # def _ensure_files(self):
-    #     for fname in (self.model_name, self.json_name):
-    #         if not os.path.exists(fname) or os.path.getsize(fname) == 0:
-    #             self._download(fname)
-
-    # def run(self, text: str) -> bytes:
-    #     audio_chunks = self.voice.synthesize(text)
-    #     audio_bytes = b"".join(chunk.audio_int16_bytes for chunk in audio_chunks)
-    #     return audio_bytes

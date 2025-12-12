@@ -11,3 +11,4 @@ edge-tts
 piper-tts
 sentence-splitter
 openai
+httpx[http2]>=0.27,<0.28

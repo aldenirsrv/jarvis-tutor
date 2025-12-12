@@ -43,12 +43,13 @@ class HuggingFaceChat:
 
         return messages
 
-    def run(self, user_input: str):
+    def run(self, user_input: str, language:str):
         # Detecção de tópico automática
         topic = detect_topic(user_input)
+        logger.info("HuggingFaceChat | model=%s", self.model_name)
 
         # Monta contexto com base no tópico
-        messages = self.build_messages(user_input, topic)
+        messages = self.build_messages(user_input, topic, language)
 
         tried_providers = []
         # ordem: provider explicitado -> hf-inference -> auto (None)
@@ -131,6 +132,30 @@ class HuggingFaceChat:
 
         return response
 
+    def stream(self, user_input: str,  language:str):
+        """
+        Streaming de texto (se o provedor suportar stream=True).
+        """
+        try:
+            topic = detect_topic(user_input)
+            messages = self.build_messages(user_input, topic, language)
+            logger.info("HuggingFaceChat.stream start | model=%s", self.model)
+            stream = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                stream=True,
+                max_tokens=120,  # permitir respostas mais longas sem travar
+            )
+            for chunk in stream:
+                delta = chunk.choices[0].delta
+                piece = delta.get("content") if isinstance(delta, dict) else delta
+                if piece:
+                    yield piece
+            logger.info("HuggingFaceChat.stream done | model=%s", self.model)
+        except Exception as exc:
+            logger.exception("HF chat stream failed: %s", exc)
+            raise HTTPException(status_code=502, detail=str(exc))
+
     def _messages_to_prompt(self, messages) -> str:
         """
         Converte mensagens em um prompt de texto simples para text_generation.
@@ -164,10 +189,11 @@ class OpenAIChat:
             )
         self.client = OpenAI(api_key=self.api_key)
 
-    def build_messages(self, user_input: str, topic: str | None = None):
+    def build_messages(self, user_input: str, topic: str | None = None, language:str = 'en-US'):
         messages = []
+        print(language)
 
-        system_prompt = get_prompt(topic)
+        system_prompt = get_prompt(topic, language)
         messages.append({"role": "system", "content": system_prompt})
 
         if self.memory:
@@ -178,9 +204,9 @@ class OpenAIChat:
         messages.append({"role": "user", "content": user_input})
         return messages
 
-    def run(self, user_input: str):
+    def run(self, user_input: str, language:str):
         topic = detect_topic(user_input)
-        messages = self.build_messages(user_input, topic)
+        messages = self.build_messages(user_input, topic, language)
 
         try:
             logger.info("OpenAIChat.run start | model=%s", self.model_name)
@@ -199,41 +225,61 @@ class OpenAIChat:
 
         return response
 
-    def stream(self, user_input: str):
+    def stream(self, user_input: str, language):
         """
-        Gera a resposta em streaming (chunks de texto).
+        Streaming de texto (se o provedor suportar stream=True).
+        - Garante flush do primeiro token sem quebrar o iterador.
+        - Lança 502 "Stream de texto vazio." se nada vier do provider.
         """
-        topic = detect_topic(user_input)
-        messages = self.build_messages(user_input, topic)
-        buffer: list[str] = []
-
+        import time
         try:
-            logger.info("OpenAIChat.stream start | model=%s", self.model_name)
+            topic = detect_topic(user_input)  # deve ser local/barato
+            messages = self.build_messages(user_input, topic, language)
+
+            logger.info("HuggingFaceChat.stream start | model=%s", self.model_name)
+            t0 = time.perf_counter()
+            got_any = False
+            first_logged = False
+
             stream = self.client.chat.completions.create(
                 model=self.model_name,
                 messages=messages,
+                max_tokens=80,          # keep it small
+                temperature=0.3,
                 stream=True,
             )
+
             for chunk in stream:
-                delta = chunk.choices[0].delta.content
+                # Compat com SDKs que retornam dict ou objeto com .content
+                delta = getattr(chunk.choices[0].delta, "content", None)
+                if delta is None:
+                    d = chunk.choices[0].delta
+                    delta = d.get("content") if isinstance(d, dict) else None
                 if not delta:
                     continue
-                if isinstance(delta, list):
-                    piece = "".join(delta)
-                else:
-                    piece = delta
-                buffer.append(piece)
-                yield piece
-            logger.info("OpenAIChat.stream done | model=%s | chars=%d", self.model_name, len("".join(buffer)))
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail=str(exc))
-        finally:
-            if buffer:
-                response = "".join(buffer).strip()
-                if self.memory:
-                    self.memory.add_message("user", user_input)
-                    self.memory.add_message("assistant", response)
 
+                if not first_logged:
+                    first_logged = True
+                    logger.info("first_token_ms=%.0f", (time.perf_counter() - t0) * 1000)
+
+                got_any = True
+                yield delta  # não quebra o loop; stream segue normalmente
+
+            if not got_any:
+                # Nenhum token útil veio do provider
+                raise HTTPException(status_code=502, detail="Stream de texto vazio.")
+        except HTTPException:
+            # repassa exatamente como está
+            raise
+        except Exception as exc:
+            logger.exception("HF chat stream failed: %s", exc)
+            # mapeie erros de crédito se quiser
+            msg = str(exc)
+            if "402" in msg or "Payment Required" in msg or "credits" in msg.lower():
+                raise HTTPException(status_code=402, detail=(
+                    "You have exceeded your monthly included credits."
+                )) from exc
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 # class HuggingFaceChat:
 #     def __init__(self, memory, model_name="mistralai/Mistral-7B-Instruct-v0.1", hf_token=None):
