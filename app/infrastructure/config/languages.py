@@ -1,7 +1,8 @@
 from __future__ import annotations
-from dataclasses import dataclass
-from dataclasses import asdict
+
+from dataclasses import dataclass, asdict
 from typing import Dict
+
 
 @dataclass(frozen=True)
 class LangInfo:
@@ -19,33 +20,44 @@ _LANGS: dict[str, LangInfo] = {
         name="English (US)",
         aliases=("en", "en_us", "en-us", "english", "english_us", "en_us_utf8"),
         voice_file="en_US-ryan-medium.onnx",
-        length_scale=1.0,   # 1.0 = normal, >1 = slower
-         
+        length_scale=1.1,   # 1.0 = normal, >1 = slower
     ),
+    # "en_ca": LangInfo(
+    #     code="en_ca",
+    #     name="English (CA)",
+    #     aliases=("en_ca", "en-ca", "english_ca", "en_ca_utf8"),
+    #     voice_file="en_US-ryan-medium.onnx",
+    #     length_scale=1.0,   # 1.0 = normal, >1 = slower
+    # )
     "pt_br": LangInfo(
         code="pt_br",
         name="Portuguese (Brazil)",
         aliases=("pt", "pt_br", "pt-br", "portugues", "português", "brazilian_portuguese"),
         voice_file="pt_BR-cadu-medium.onnx",  # change to a voice you actually have
-        length_scale=0.8,   # 1.0 = normal, >1 = slower
+        length_scale=0.8   # 1.0 = normal, >1 = slower
     ),
 }
+
 
 def get_voice(acronym: str | None) -> str:
     code = (acronym or "").strip().lower().replace("-", "_")
     info = _LANGS.get(code)
     return info.voice_file if info else _LANGS["en_us"].voice_file
 
-def get_scale(acronym: str | None) -> str:
+
+def get_scale(acronym: str | None) -> float:
     code = (acronym or "").strip().lower().replace("-", "_")
     info = _LANGS.get(code)
     return info.length_scale if info else _LANGS["en_us"].length_scale
+
 
 def get_name(acronym: str | None) -> str:
     code = (acronym or "").strip().lower().replace("-", "_")
     info = _LANGS.get(code)
     return info.name if info else _LANGS["en_us"].name
 
+
 def get_languages_json() -> Dict[str, dict]:
     """Canonical code -> plain dicts (safe to serialize)."""
     return {code: asdict(info) for code, info in _LANGS.items()}
+

@@ -1,3 +1,4 @@
+# Base runtime deps
 fastapi
 uvicorn
 langchain
@@ -5,13 +6,19 @@ huggingface_hub
 langchain_community
 requests
 python-dotenv
-# transformers
 scipy
+edge-tts
 piper-tts
 sentence-splitter
 openai
 httpx[http2]>=0.27,<0.28
-ffmpeg
+
 # multilingual sentence boundary detection
 pysbd
 nltk
+
+# Silero-specific
+torch
+silero
+omegaconf>=2.3.0
+

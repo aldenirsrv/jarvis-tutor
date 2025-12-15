@@ -2,13 +2,11 @@ from fastapi import FastAPI, Request, HTTPException, Query
 from huggingface_hub.utils import HfHubHTTPError
 from pydantic import BaseModel
 from fastapi.responses import JSONResponse
-from app.model import HuggingFaceChat, OpenAIChat
-from app.text_to_speech import EdgeTTS
-from app.tts_piper import PiperTTS, PiperTTSStream
-from app.memory import SQLiteMemory
+from app.infrastructure.chat.models import HuggingFaceChat, OpenAIChat
+from app.infrastructure.memory.sqlite_memory_impl import SQLiteMemory
 from fastapi.middleware.cors import CORSMiddleware
-from app.pre_processor import add_natural_pauses
-from app.languages import get_voice, get_scale, get_languages_json, LangInfo
+from app.application.policies.pre_processor import add_natural_pauses
+from app.infrastructure.config.languages import get_voice, get_scale, get_languages_json, LangInfo
 from pydantic import BaseModel
 import logging
 from dotenv import load_dotenv
@@ -19,12 +17,12 @@ import re
 import html
 import base64
 from fastapi.responses import StreamingResponse
-from app.streaming import PiperStreamer, PiperStreamerV2
+from app.infrastructure.tts.piper_streaming import PiperStreamer
 from typing import Generator
 import struct
 import itertools
 from typing import Dict, Iterable
-from app.voices import VoiceRegistry
+from app.infrastructure.config.voices import VoiceRegistry
 from contextlib import asynccontextmanager
 load_dotenv()
 import subprocess, shutil, struct
@@ -61,9 +59,7 @@ if chat_backend == "openai":
     chat = OpenAIChat(memory=memory)
 else:
     chat = HuggingFaceChat(memory=memory, hf_token=hf_token)
-tts = EdgeTTS(voice="en-US-GuyNeural")
-tts_piper = PiperTTS(length_scale=1.25)
-tts_instance = PiperTTSStream()
+
 # 1. Instancia o gerador de áudio ---------------------------
 
 def clean_response_for_alexa(text: str, max_sentences=4) -> str:
@@ -137,7 +133,7 @@ def chat_endpoint(user_input: UserInput):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/chat-stream")
+@app.post("/tts-stream")
 async def chat_stream_endpoint(user_input: UserInput):
     """
     Streaming de áudio com início rápido (~<1s):

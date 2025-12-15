@@ -32,7 +32,8 @@ gcloud run deploy $APP_NAME-$SLUG-server \
   --port=8000 \
   --allow-unauthenticated \
   --timeout=900s \
-  --memory=2Gi \
+  --memory=4Gi \
+  --cpu=1 \
 #   --set-secrets="FIREBASE_CREDENTIAL_JSON=firebase-service-account:latest"
 
 # --startup-probe httpGet.port=8080,httpGet.path=/health,initialDelaySeconds=100,periodSeconds=20,timeoutSeconds=20

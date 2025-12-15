@@ -1,4 +1,4 @@
-APP_VERSION="v0.2.0"
+APP_VERSION="v0.2.7"
 APP_NAME="jarvis"
 APPLICATIONS=('python')
 DOCKER_ACCOUNT="aldenir"

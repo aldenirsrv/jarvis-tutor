@@ -3,7 +3,7 @@ import logging
 from fastapi import HTTPException
 from huggingface_hub import InferenceClient
 from openai import OpenAI
-from app.prompts import get_prompt
+from app.shared.prompts import get_prompt
 from utils import detect_topic  # import da sua função de detecção
 
 logger = logging.getLogger(__name__)
@@ -244,8 +244,8 @@ class OpenAIChat:
             stream = self.client.chat.completions.create(
                 model=self.model_name,
                 messages=messages,
-                max_tokens=80,          # keep it small
-                temperature=0.3,
+                max_tokens=400,          # keep it small
+                temperature=0.7,
                 stream=True,
             )
 

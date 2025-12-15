@@ -1,4 +1,4 @@
-from .languages import get_name
+from app.infrastructure.config.languages import get_name
 
 def get_prompt(topic=None, lang='en-US'):
     language = get_name(lang)

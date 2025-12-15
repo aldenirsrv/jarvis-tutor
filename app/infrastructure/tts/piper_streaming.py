@@ -1,11 +1,8 @@
-import os
-import io
 import re
-from typing import Generator, Iterable, Optional
 import time
-from typing import Iterable, Generator, Optional, Union
+from typing import Generator, Iterable, Optional, Union
 
-# piper_streamer.py
+
 class PiperStreamer:
     def __init__(
         self,
@@ -24,19 +21,27 @@ class PiperStreamer:
 
     def _split_text(self, text: str) -> Iterable[str]:
         text = text.strip()
-        if not text: return []
+        if not text:
+            return []
         sentences = re.split(r"(?<=[.!?])\s+", text)
         for s in sentences:
             s = s.strip()
-            if not s: continue
+            if not s:
+                continue
             buf, n = [], 0
             for ch in s:
-                buf.append(ch); n += 1
+                buf.append(ch)
+                n += 1
                 if ch in ".?!;," and n >= self.min_break_len:
-                    yield "".join(buf).strip(); buf=[]; n=0
+                    yield "".join(buf).strip()
+                    buf = []
+                    n = 0
                 elif n >= self.max_chunk_len:
-                    yield "".join(buf).strip(); buf=[]; n=0
-            if buf: yield "".join(buf).strip()
+                    yield "".join(buf).strip()
+                    buf = []
+                    n = 0
+            if buf:
+                yield "".join(buf).strip()
 
     def _synthesize(self, sentence: str):
         # compatible with both Piper APIs
@@ -44,7 +49,7 @@ class PiperStreamer:
             return self.voice.synthesize(sentence, **self.synth_cfg)
         return self.voice.synthesize(sentence, self.synth_cfg)
 
-    def stream_pcm(self, text_or_iter: Union[str, Iterable[str]]) -> Generator[tuple[int,int,int,bytes], None, None]:
+    def stream_pcm(self, text_or_iter: Union[str, Iterable[str]]) -> Generator[tuple[int, int, int, bytes], None, None]:
         """Accept a single string or an iterator of strings and stream PCM chunks."""
         first = True
         t0 = time.perf_counter()
@@ -68,3 +73,4 @@ class PiperStreamer:
                     self.first_chunk_cb(int((time.perf_counter() - t0) * 1000))
                     first = False
                 yield (chunk.sample_rate, chunk.sample_channels, chunk.sample_width, pcm)
+
