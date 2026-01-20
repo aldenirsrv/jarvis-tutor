@@ -125,7 +125,7 @@ class HuggingFaceChat:
 
         response = response_text
 
-        # Armazena no banco
+
         if self.memory:
             self.memory.add_message("user", user_input)
             self.memory.add_message("assistant", response)
@@ -188,20 +188,48 @@ class OpenAIChat:
                 detail="OPENAI_API_KEY não definido no ambiente.",
             )
         self.client = OpenAI(api_key=self.api_key)
+    
+    # def build_messages(self, user_input: str, topic: str | None = None, language: str = "en-US"):
+    #     messages: list[dict[str, str]] = []
 
-    def build_messages(self, user_input: str, topic: str | None = None, language:str = 'en-US'):
-        messages = []
-        print(language)
+    #     system_prompt = get_prompt(topic, language, history)
+    #     messages.append({"role": "system", "content": system_prompt})
 
-        system_prompt = get_prompt(topic, language)
-        messages.append({"role": "system", "content": system_prompt})
+    #     if self.memory:
+    #         history = self.memory.get_last_messages(limit=5)  # expected: list[tuple[str, str]]
+    #         for role, content in history:
+    #             if not content:
+    #                 continue
 
+    #             # Only allow roles that the Chat Completions API expects
+    #             if role not in ("user", "assistant", "system"):
+    #                 continue
+
+    #             # Ensure it's a string and not huge
+    #             messages.append({"role": role, "content": str(content)[:4000]})
+
+    #     messages.append({"role": "user", "content": str(user_input)})
+    #     return messages
+    def build_messages(self, user_input: str, topic: str | None = None, language: str = "en-US"):
+        history_text = ""
         if self.memory:
-            history = self.memory.get_last_messages(limit=5)
+            history = self.memory.get_last_messages(limit=30)  # [(role, content), ...]
+            lines = []
             for role, content in history:
-                messages.append({"role": role, "content": content})
+                if role not in ("user", "assistant"):
+                    continue
+                if not content:
+                    continue
+                lines.append(f"{role.upper()}: {str(content).strip()[:10000]}")
+            history_text = "\n".join(lines)
 
-        messages.append({"role": "user", "content": user_input})
+        print(history_text)
+        system_prompt = get_prompt(topic, language, history=history)
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": str(user_input)},
+        ]
         return messages
 
     def run(self, user_input: str, language:str):
@@ -227,16 +255,19 @@ class OpenAIChat:
 
     def stream(self, user_input: str, language):
         """
-        Streaming de texto (se o provedor suportar stream=True).
-        - Garante flush do primeiro token sem quebrar o iterador.
-        - Lança 502 "Stream de texto vazio." se nada vier do provider.
+        Streams text tokens from the provider (stream=True).
+        - Logs time to first token
+        - Raises 502 if no usable text tokens arrive
         """
         import time
+
         try:
-            topic = detect_topic(user_input)  # deve ser local/barato
+            topic = detect_topic(user_input)  # should be local/cheap
             messages = self.build_messages(user_input, topic, language)
 
-            logger.info("HuggingFaceChat.stream start | model=%s", self.model_name)
+            answer_parts: list[str] = []
+
+            logger.info("OpenAIChat.stream start | model=%s", self.model_name)
             t0 = time.perf_counter()
             got_any = False
             first_logged = False
@@ -244,18 +275,22 @@ class OpenAIChat:
             stream = self.client.chat.completions.create(
                 model=self.model_name,
                 messages=messages,
-                max_tokens=400,          # keep it small
+                max_tokens=400,
                 temperature=0.7,
                 stream=True,
             )
 
             for chunk in stream:
-                # Compat com SDKs que retornam dict ou objeto com .content
-                delta = getattr(chunk.choices[0].delta, "content", None)
-                if delta is None:
-                    d = chunk.choices[0].delta
-                    delta = d.get("content") if isinstance(d, dict) else None
-                if not delta:
+                choice = chunk.choices[0]
+                d = choice.delta  # can contain role/tool_calls/etc.
+
+                # Prefer attribute access; fall back to dict-like if needed
+                delta_text = getattr(d, "content", None)
+                if delta_text is None and isinstance(d, dict):
+                    delta_text = d.get("content")
+
+                # Normalize None/"" to "no token"
+                if not delta_text:
                     continue
 
                 if not first_logged:
@@ -263,22 +298,28 @@ class OpenAIChat:
                     logger.info("first_token_ms=%.0f", (time.perf_counter() - t0) * 1000)
 
                 got_any = True
-                yield delta  # não quebra o loop; stream segue normalmente
+                answer_parts.append(delta_text)
+                yield delta_text
+
+            answer = "".join(answer_parts)
+            if self.memory:
+                self.memory.add_message("user", user_input)
+                self.memory.add_message("assistant", answer)
+            # print(f"### __ {user_input} __ ### Answer {answer}")
 
             if not got_any:
-                # Nenhum token útil veio do provider
-                raise HTTPException(status_code=502, detail="Stream de texto vazio.")
+                raise HTTPException(status_code=502, detail="Text stream empty.")
+
         except HTTPException:
-            # repassa exatamente como está
             raise
         except Exception as exc:
-            logger.exception("HF chat stream failed: %s", exc)
-            # mapeie erros de crédito se quiser
+            logger.exception("Chat stream failed: %s", exc)
             msg = str(exc)
             if "402" in msg or "Payment Required" in msg or "credits" in msg.lower():
-                raise HTTPException(status_code=402, detail=(
-                    "You have exceeded your monthly included credits."
-                )) from exc
+                raise HTTPException(
+                    status_code=402,
+                    detail="You have exceeded your monthly included credits.",
+                ) from exc
             raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 # class HuggingFaceChat:

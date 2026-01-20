@@ -41,7 +41,7 @@ class StreamTTSUseCase:
                 char_count += len(t)
                 yield piece
 
-        for frame in self.tts.stream_pcm(counted_iter(), dto.language):
+        for frame in self.tts.stream_pcm(counted_iter(), dto.language, dto.quality):
             logger.info("tts frame yielded | sr=%d ch=%d sw=%d bytes=%d", frame.sample_rate, frame.channels, frame.sample_width, len(frame.data))
             yield frame
         logger.info(

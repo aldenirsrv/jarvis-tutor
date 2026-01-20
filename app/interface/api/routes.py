@@ -71,6 +71,7 @@ def tts_stream(
 
     dto = TTSRequestDTO(
         message=user_input.message,
+        quality=user_input.quality,
         language=user_input.language_code(),
         language_iso=user_input.language_iso(),
         format=AudioFormat.from_str(fmt),

@@ -7,6 +7,7 @@ from app.domain.value_objects.types import AudioFormat, LanguageCode, LanguageIS
 @dataclass
 class TTSRequestDTO:
     message: str
+    quality: str
     language: LanguageCode
     language_iso:LanguageISO
     format: AudioFormat = AudioFormat.WAV

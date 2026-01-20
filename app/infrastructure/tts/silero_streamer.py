@@ -110,7 +110,7 @@ class SileroTTSAdapter(ITTSStreamer):
         pcm = (arr * 32767).clip(-32768, 32767).astype(np.int16).tobytes()
         return pcm
 
-    def stream_pcm(self, text_or_iter: Union[str, Iterable[str]], language: LanguageCode) -> Generator[AudioFrame, None, None]:
+    def stream_pcm(self, text_or_iter: Union[str, Iterable[str]], language: LanguageCode, quality: str = "low") -> Generator[AudioFrame, None, None]:
         _lang_key, speaker = self._LANG_TO_SPEAKER.get(language, ("en", None))
         chosen_speaker = speaker or self.default_speaker  # fallback to the first available / env override
 

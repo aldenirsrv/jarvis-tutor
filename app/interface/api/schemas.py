@@ -5,6 +5,7 @@ from app.domain.value_objects.types import AudioFormat, LanguageCode, LanguageIS
 class TTSRequest(BaseModel):
     message: str
     language: str
+    quality: str
     format: str | None = None  # default handled in route
 
     def language_code(self) -> LanguageCode:

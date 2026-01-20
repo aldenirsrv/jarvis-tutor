@@ -21,9 +21,10 @@ class MultiTTSAdapter(ITTSStreamer):
     def stream_pcm(
         self,
         text_or_iter: str | Iterable[str],
-        language: LanguageCode
+        language: LanguageCode,
+        quality: str
     ) -> Generator[AudioFrame, None, None]:
-        if self.silero and language == LanguageCode.EN_US:
+        if self.silero and language == LanguageCode.EN_US and quality == 'high':
             # Silero path; let exceptions propagate to fail fast (no silent fallback)
             yield from self.silero.stream_pcm(text_or_iter, language)
             return

@@ -6,5 +6,5 @@ from app.domain.value_objects.types import LanguageCode
 
 
 class ITTSStreamer(Protocol):
-    def stream_pcm(self, text_or_iter: str | Iterable[str], language: LanguageCode) -> Generator[AudioFrame, None, None]:
+    def stream_pcm(self, text_or_iter: str | Iterable[str], language: LanguageCode, quality: str) -> Generator[AudioFrame, None, None]:
         ...
