@@ -10,6 +10,7 @@ from app.infrastructure.chat.hf_chat import HuggingFaceChatAdapter
 from app.infrastructure.chat.openai_chat import OpenAIChatAdapter
 from app.infrastructure.config.voice_registry import build_registry
 from app.infrastructure.memory.sqlite_memory import SQLiteMemoryAdapter
+from app.infrastructure.memory.sqlite_lessons_impl import SQLiteLessons
 from app.infrastructure.nltk.nltk_resources import ensure_nltk_punkt
 from app.infrastructure.tts.multi_streamer import MultiTTSAdapter
 from app.infrastructure.tts.piper_streamer import PiperTTSAdapter
@@ -21,6 +22,7 @@ from app.shared.settings import Settings
 async def lifespan(app: FastAPI):
     settings = Settings.load()
     memory = SQLiteMemoryAdapter()
+    lessons = SQLiteLessons()
     ensure_nltk_punkt()
     registry = build_registry()
     piper = PiperTTSAdapter(registry)
@@ -43,6 +45,7 @@ async def lifespan(app: FastAPI):
     app.state.voice_registry = registry
     app.state.chat = chat
     app.state.stream_tts = use_case
+    app.state.lessons = lessons
     try:
         yield
     finally:

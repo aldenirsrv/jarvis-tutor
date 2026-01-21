@@ -11,5 +11,5 @@ class OpenAIChatAdapter(IChatStreamer):
     def __init__(self, memory: IMemory):
         self._client = OpenAIChat(memory=memory)
 
-    def stream(self, message: str, language: LanguageCode) -> Iterable[str]:
-        return self._client.stream(message, language)
+    def stream(self, message: str, language: LanguageCode,lesson:str = None) -> Iterable[str]:
+        return self._client.stream(message, language, lesson)

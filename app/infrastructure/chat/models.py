@@ -4,12 +4,13 @@ from fastapi import HTTPException
 from huggingface_hub import InferenceClient
 from openai import OpenAI
 from app.shared.prompts import get_prompt
-from utils import detect_topic  # import da sua função de detecção
-
+from utils import detect_topic, clean_lesson_text  # import da sua função de detecção
+from app.infrastructure.memory.sqlite_lessons_impl import SQLiteLessons
 logger = logging.getLogger(__name__)
 from dotenv import load_dotenv
 load_dotenv()
 
+lessons = SQLiteLessons()
 class HuggingFaceChat:
     def __init__(self, memory=None, model_name="mistralai/Mistral-7B-Instruct-v0.3", hf_token=None):
         self.memory = memory
@@ -210,8 +211,7 @@ class OpenAIChat:
 
     #     messages.append({"role": "user", "content": str(user_input)})
     #     return messages
-    def build_messages(self, user_input: str, topic: str | None = None, language: str = "en-US"):
-        history_text = ""
+    def build_messages(self, user_input: str, topic: str | None = None, language: str = "en-US", lesson:dict = None):
         if self.memory:
             history = self.memory.get_last_messages(limit=30)  # [(role, content), ...]
             lines = []
@@ -221,10 +221,7 @@ class OpenAIChat:
                 if not content:
                     continue
                 lines.append(f"{role.upper()}: {str(content).strip()[:10000]}")
-            history_text = "\n".join(lines)
-
-        print(history_text)
-        system_prompt = get_prompt(topic, language, history=history)
+        system_prompt = get_prompt(topic, language, history=history, lesson= lesson)
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -253,7 +250,7 @@ class OpenAIChat:
 
         return response
 
-    def stream(self, user_input: str, language):
+    def stream(self, user_input: str, language, selected_lesson:str = None):
         """
         Streams text tokens from the provider (stream=True).
         - Logs time to first token
@@ -263,8 +260,12 @@ class OpenAIChat:
 
         try:
             topic = detect_topic(user_input)  # should be local/cheap
-            messages = self.build_messages(user_input, topic, language)
-
+            if selected_lesson:
+                lesson = lessons.get_lesson(lesson_id=selected_lesson)
+                #  content = lesson.get("content", "")
+                # goals = lesson.get("goals", "")
+                # rules = lesson.get("rules", "")
+            messages = self.build_messages(user_input, topic, language, lesson)
             answer_parts: list[str] = []
 
             logger.info("OpenAIChat.stream start | model=%s", self.model_name)

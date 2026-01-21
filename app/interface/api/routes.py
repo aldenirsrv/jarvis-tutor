@@ -13,7 +13,13 @@ from app.application.use_cases.stream_tts import StreamTTSUseCase
 from app.domain.entities.audio import AudioFrame
 from app.domain.value_objects.types import AudioFormat
 from app.infrastructure.audio.aac_encoder import aac_stream
-from app.interface.api.schemas import TTSRequest
+from app.interface.api.schemas import (
+    TTSRequest,
+    LessonCreate,
+    Lesson,
+    LessonStatusUpdate,
+    LessonStatus,
+)
 from app.infrastructure.config.languages import get_languages_json
 from app.infrastructure.tts.piper_streaming import PiperStreamer
 from app.application.policies.chunking import buffered
@@ -66,43 +72,93 @@ def tts_stream(
     req: Request,
     format: str | None = Query(None, description="aac|m4a|adts|wav"),
 ):
-    use_case: StreamTTSUseCase = req.app.state.stream_tts
-    fmt = (format or user_input.format or "wav").lower()
+    try:
+        use_case: StreamTTSUseCase = req.app.state.stream_tts
+        fmt = (format or user_input.format or "wav").lower()
 
-    dto = TTSRequestDTO(
-        message=user_input.message,
-        quality=user_input.quality,
-        language=user_input.language_code(),
-        language_iso=user_input.language_iso(),
-        format=AudioFormat.from_str(fmt),
+        dto = TTSRequestDTO(
+            message=user_input.message,
+            quality=user_input.quality,
+            selected_lesson=user_input.selected_lesson,
+            language=user_input.language_code(),
+            language_iso=user_input.language_iso(),
+            format=AudioFormat.from_str(fmt),
+        )
+
+        frames = use_case.execute(dto)
+
+        if dto.format == AudioFormat.M4A:
+            if not shutil.which("ffmpeg"):
+                raise HTTPException(500, "ffmpeg is required for m4a streaming. Use format=wav.")
+            # Fragmented MP4 for MSE playback
+            body = aac_stream(frames, container="mp4")
+            media_type = 'audio/mp4; codecs="mp4a.40.2"'
+        elif dto.format in (AudioFormat.AAC, AudioFormat.ADTS):
+            if not shutil.which("ffmpeg"):
+                raise HTTPException(500, "ffmpeg is required for aac streaming. Use format=wav.")
+            # ADTS for plain AAC streaming
+            body = aac_stream(frames, container="adts")
+            media_type = "audio/aac"
+        else:
+            body = _wav_stream(frames)
+            media_type = "audio/wav"
+        
+        return StreamingResponse(
+            body,
+            media_type=media_type,
+            headers={
+                "Cache-Control": "no-store",
+                "Pragma": "no-cache",
+                "X-Accel-Buffering": "no",
+                # optional: filled after first chunk? (can’t easily unless you buffer)
+            },
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/lessons", response_model=Lesson, tags=["Lessons"])
+def create_lesson(payload: LessonCreate, req: Request):
+    lessons = req.app.state.lessons
+    created = lessons.create_lesson(
+        exercise_number=payload.exercise_number,
+        goals=payload.goals,
+        instruction=payload.instruction,
+        content=payload.content,
+        rules=payload.rules,
+        status=payload.status,
     )
+    return created
 
-    frames = use_case.execute(dto)
 
-    if dto.format == AudioFormat.M4A:
-        if not shutil.which("ffmpeg"):
-            raise HTTPException(500, "ffmpeg is required for m4a streaming. Use format=wav.")
-        # Fragmented MP4 for MSE playback
-        body = aac_stream(frames, container="mp4")
-        media_type = 'audio/mp4; codecs="mp4a.40.2"'
-    elif dto.format in (AudioFormat.AAC, AudioFormat.ADTS):
-        if not shutil.which("ffmpeg"):
-            raise HTTPException(500, "ffmpeg is required for aac streaming. Use format=wav.")
-        # ADTS for plain AAC streaming
-        body = aac_stream(frames, container="adts")
-        media_type = "audio/aac"
-    else:
-        body = _wav_stream(frames)
-        media_type = "audio/wav"
-    
-    return StreamingResponse(
-        body,
-        media_type=media_type,
-        headers={
-            "Cache-Control": "no-store",
-            "Pragma": "no-cache",
-            "X-Accel-Buffering": "no",
-            # optional: filled after first chunk? (can’t easily unless you buffer)
-        },
-    )
+@router.get("/lessons", response_model=list[Lesson], tags=["Lessons"])
+def list_lessons(req: Request, status: LessonStatus | None = Query(None)):
+    lessons = req.app.state.lessons
+    return lessons.list_lessons(status=status)
 
+
+@router.get("/lessons/{lesson_id}", response_model=Lesson, tags=["Lessons"])
+def get_lesson(lesson_id: str, req: Request):
+    lessons = req.app.state.lessons
+    lesson = lessons.get_lesson(lesson_id)
+    if not lesson:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+    return lesson
+
+
+@router.delete("/lessons/{lesson_id}", tags=["Lessons"])
+def delete_lesson(lesson_id: str, req: Request):
+    lessons = req.app.state.lessons
+    deleted = lessons.delete_lesson(lesson_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+    return {"deleted": True}
+
+
+@router.patch("/lessons/{lesson_id}/status", response_model=Lesson, tags=["Lessons"])
+def update_lesson_status(lesson_id: str, payload: LessonStatusUpdate, req: Request):
+    lessons = req.app.state.lessons
+    lesson = lessons.update_status(lesson_id, payload.status)
+    if not lesson:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+    return lesson

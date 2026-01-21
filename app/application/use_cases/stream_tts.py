@@ -23,7 +23,7 @@ class StreamTTSUseCase:
         logger = logging.getLogger(__name__)
 
         logger.info("chat stream start | lang=%s", dto.language.value)
-        text_iter = self.chat.stream(dto.message, dto.language)
+        text_iter = self.chat.stream(dto.message, dto.language, dto.selected_lesson)
         logger.info("chat stream got iterator | lang=%s", dto.language.value)
 
         # Choose chunker language based on ISO code; default to English if unsupported by pysbd
@@ -41,7 +41,7 @@ class StreamTTSUseCase:
                 char_count += len(t)
                 yield piece
 
-        for frame in self.tts.stream_pcm(counted_iter(), dto.language, dto.quality):
+        for frame in self.tts.stream_pcm(counted_iter(), dto.language, dto.quality, dto.selected_lesson):
             logger.info("tts frame yielded | sr=%d ch=%d sw=%d bytes=%d", frame.sample_rate, frame.channels, frame.sample_width, len(frame.data))
             yield frame
         logger.info(

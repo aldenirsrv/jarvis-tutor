@@ -22,7 +22,8 @@ class MultiTTSAdapter(ITTSStreamer):
         self,
         text_or_iter: str | Iterable[str],
         language: LanguageCode,
-        quality: str
+        quality: str,
+        lesson:str
     ) -> Generator[AudioFrame, None, None]:
         if self.silero and language == LanguageCode.EN_US and quality == 'high':
             # Silero path; let exceptions propagate to fail fast (no silent fallback)
